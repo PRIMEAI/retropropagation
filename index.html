@@ -1,0 +1,503 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rétropropagation pas à pas</title>
+<meta name="description" content="Exemple interactif de rétropropagation du gradient sur un réseau 2-2-1, calculs étape par étape.">
+<style>
+:root{
+  --bg:#f7f7f5; --panel:#ffffff; --ink:#1d1d1f; --muted:#6b6b70; --line:#d9d9d6;
+  --edge:#a3a39e; --dim:#e3e3df; --accent:#2563eb; --accent-soft:rgba(37,99,235,.12);
+  --err:#ea580c; --err-soft:rgba(234,88,12,.13); --grad:#7c3aed; --good:#16a34a;
+  --code:#f1f1ee; --halo:#ffffff;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#141416; --panel:#1d1d20; --ink:#ececef; --muted:#a0a0a8; --line:#34343a;
+    --edge:#6f6f78; --dim:#303036; --accent:#60a5fa; --accent-soft:rgba(96,165,250,.16);
+    --err:#fb923c; --err-soft:rgba(251,146,60,.16); --grad:#a78bfa; --good:#4ade80;
+    --code:#26262a; --halo:#1d1d20;
+  }
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:16px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{max-width:1200px;margin:0 auto;padding:28px 20px 8px}
+h1{font-size:1.6rem;margin:0 0 4px}
+header p{margin:0;color:var(--muted)}
+main{max-width:1200px;margin:0 auto;padding:12px 20px 40px;display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:20px}
+@media (max-width:900px){main{grid-template-columns:minmax(0,1fr)}}
+.card{min-width:0}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px}
+svg{width:100%;height:auto;display:block}
+.netwrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+#net{min-width:600px}
+
+/* réseau */
+.edge{stroke:var(--edge);stroke-width:1.4;transition:stroke .3s,stroke-width .3s,opacity .3s}
+.edge.dim{stroke:var(--dim)}
+.edge.fwd{stroke:var(--accent);stroke-width:2.6}
+.edge.back{stroke:var(--err);stroke-width:2.8}
+.edge.grad{stroke:var(--grad);stroke-width:2}
+.node{fill:var(--panel);stroke:var(--edge);stroke-width:1.6;transition:fill .3s,stroke .3s}
+.node.bias{stroke-dasharray:4 3}
+.node.active{fill:var(--accent-soft);stroke:var(--accent);stroke-width:2.6}
+.node.err{fill:var(--err-soft);stroke:var(--err);stroke-width:2.6}
+.ntext{fill:var(--ink);font-size:16px;text-anchor:middle;dominant-baseline:central}
+.ntext.bias{fill:var(--muted)}
+.elabel{font-size:14px;text-anchor:middle;dominant-baseline:central;fill:var(--ink);
+  paint-order:stroke;stroke:var(--halo);stroke-width:5px;stroke-linejoin:round}
+.elabel.dim{fill:var(--muted)}
+.elabel.strong{font-weight:700}
+.elabel.gradc{fill:var(--grad);font-weight:700}
+.ann{font-size:14px;fill:var(--ink);paint-order:stroke;stroke:var(--halo);stroke-width:5px;stroke-linejoin:round}
+.ann.muted{fill:var(--muted)}
+.ann.errc{fill:var(--err);font-weight:700}
+.ann.acc{fill:var(--accent);font-weight:700}
+.cap{font-size:14px;fill:var(--muted);text-anchor:middle;font-weight:600}
+
+/* contrôles */
+.controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:12px}
+button{font:inherit;font-size:.95rem;border:1px solid var(--line);background:var(--panel);color:var(--ink);
+  border-radius:8px;padding:7px 14px;cursor:pointer}
+button:hover{border-color:var(--accent)}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+button:disabled{opacity:.4;cursor:default}
+.dots{display:flex;gap:6px;margin-left:auto}
+.dot{width:26px;height:26px;border-radius:50%;padding:0;font-size:.8rem;display:grid;place-items:center}
+.dot.on{background:var(--accent);border-color:var(--accent);color:#fff}
+
+/* panneau de calcul */
+.step-kicker{font-size:.8rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0}
+h2{font-size:1.25rem;margin:2px 0 8px}
+.lead{margin:0 0 12px}
+.formula{background:var(--code);border-radius:8px;padding:10px 12px;font-family:"Cambria Math","STIX Two Math",Georgia,serif;font-size:1.02rem;margin:0 0 12px;overflow-x:auto;white-space:nowrap}
+.calc{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.86rem;line-height:1.7;overflow-x:auto}
+.calc .row{white-space:normal}
+.calc b{color:var(--accent)}
+.calc .e{color:var(--err);font-weight:700}
+.calc .g{color:var(--grad);font-weight:700}
+.note{font-size:.9rem;color:var(--muted);margin:10px 0 0}
+table{border-collapse:collapse;font-size:.85rem;margin:6px 0;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+th,td{padding:3px 8px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}
+th{font-family:system-ui,sans-serif;font-weight:600;color:var(--muted)}
+td:first-child,th:first-child{text-align:left}
+.mat{display:inline-block;margin-right:18px;vertical-align:top}
+.mat table td{border:none;padding:1px 8px}
+.mat .br{border-left:2px solid var(--ink);border-right:2px solid var(--ink);border-radius:4px}
+
+/* paramètres + historique */
+details{margin-top:16px}
+summary{cursor:pointer;font-weight:600}
+.params{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px 12px;margin-top:10px}
+.params label{font-size:.82rem;color:var(--muted);display:flex;flex-direction:column;gap:2px}
+.params input{font:inherit;font-size:.95rem;padding:4px 6px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink);width:100%}
+.hist{margin-top:14px;display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+.hist svg{width:240px;height:70px;flex:none}
+.hist .txt{font-size:.9rem}
+.spark{fill:none;stroke:var(--accent);stroke-width:2}
+.sparkdot{fill:var(--accent)}
+footer{max-width:1200px;margin:0 auto;padding:0 20px 30px;color:var(--muted);font-size:.85rem}
+kbd{border:1px solid var(--line);border-radius:4px;padding:0 5px;font-size:.8rem}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Rétropropagation du gradient, pas à pas</h1>
+  <h3>Moulay Akhloufi</h3>
+  <p>Un réseau 2-2-1 à activation sigmoïde : suivez chaque calcul, de la propagation avant à la mise à jour des poids.</p>
+</header>
+
+<main>
+  <section class="card">
+    <div class="netwrap"><svg id="net" viewBox="0 0 800 390" role="img" aria-label="Réseau de neurones 2-2-1 avec les valeurs de l'étape en cours"></svg></div>
+    <div class="controls">
+      <button id="prev" aria-label="Étape précédente">← Précédent</button>
+      <button id="next" class="primary" aria-label="Étape suivante">Suivant →</button>
+      <button id="play">▶ Lecture</button>
+      <div class="dots" id="dots"></div>
+    </div>
+    <div class="hist" id="hist"></div>
+
+    <details id="paramsBox">
+      <summary>Paramètres de l'exemple (modifiables)</summary>
+      <div class="params" id="params"></div>
+      <div class="controls">
+        <button id="reset">Revenir à l'exemple du cours</button>
+      </div>
+    </details>
+  </section>
+
+  <section class="card" aria-live="polite">
+    <p class="step-kicker" id="kicker"></p>
+    <h2 id="title"></h2>
+    <p class="lead" id="lead"></p>
+    <div class="formula" id="formula"></div>
+    <div class="calc" id="calc"></div>
+  </section>
+</main>
+
+<footer>
+  Navigation au clavier : <kbd>←</kbd> <kbd>→</kbd>. Les valeurs sont arrondies à 4 décimales ; tous les calculs sont refaits en direct à partir des paramètres.
+</footer>
+
+<script>
+"use strict";
+
+/* ---------- paramètres ---------- */
+const DEFAUT = {
+  x: [1, 0.5], y: 1,
+  T1: [[0.1, 0.3, -0.2], [-0.1, 0.2, 0.6]],
+  T2: [[0.2, 0.5, -0.3]],
+  alpha: 0.5, lambda: 0
+};
+const clone = o => JSON.parse(JSON.stringify(o));
+let P = clone(DEFAUT);
+let step = 0, iteration = 1, history = [], timer = null;
+
+/* ---------- calculs ---------- */
+const sig = z => 1 / (1 + Math.exp(-z));
+const dot = (w, a) => w.reduce((s, wi, i) => s + wi * a[i], 0);
+
+function forward(T1, T2, x, y, lambda) {
+  const a1 = [1, x[0], x[1]];
+  const z2 = [dot(T1[0], a1), dot(T1[1], a1)];
+  const h = z2.map(sig);
+  const a2 = [1, h[0], h[1]];
+  const z3 = dot(T2[0], a2);
+  const a3 = sig(z3);
+  const Jd = -(y * Math.log(a3) + (1 - y) * Math.log(1 - a3));
+  const reg = lambda / 2 * (T1[0][1]**2 + T1[0][2]**2 + T1[1][1]**2 + T1[1][2]**2 + T2[0][1]**2 + T2[0][2]**2);
+  return { a1, z2, h, a2, z3, a3, Jd, reg, J: Jd + reg };
+}
+
+function compute(p) {
+  const f = forward(p.T1, p.T2, p.x, p.y, p.lambda);
+  const d3 = f.a3 - p.y;
+  const back = [p.T2[0][1] * d3, p.T2[0][2] * d3];
+  const gp = f.h.map(a => a * (1 - a));
+  const d2 = [back[0] * gp[0], back[1] * gp[1]];
+  const Dl1 = [0, 1].map(i => [0, 1, 2].map(j => d2[i] * f.a1[j]));      // Δ⁽¹⁾ (m = 1)
+  const Dl2 = [[0, 1, 2].map(j => d3 * f.a2[j])];                          // Δ⁽²⁾
+  const R1 = [0, 1].map(i => [0, 1, 2].map(j => j ? p.lambda * p.T1[i][j] : 0));
+  const R2 = [[0, 1, 2].map(j => j ? p.lambda * p.T2[0][j] : 0)];
+  const D1 = Dl1.map((r, i) => r.map((v, j) => v + R1[i][j]));
+  const D2 = Dl2.map((r, i) => r.map((v, j) => v + R2[i][j]));
+  const N1 = p.T1.map((r, i) => r.map((v, j) => v - p.alpha * D1[i][j]));
+  const N2 = p.T2.map((r, i) => r.map((v, j) => v - p.alpha * D2[i][j]));
+  const fn = forward(N1, N2, p.x, p.y, p.lambda);
+  return { ...f, d3, back, gp, d2, Dl1, Dl2, R1, R2, D1, D2, N1, N2, fn };
+}
+
+/* ---------- formatage ---------- */
+const M = "−";
+const f4 = v => (v < 0 ? M : "") + Math.abs(v).toFixed(4);
+const fw = v => { let s = Math.abs(v).toFixed(4).replace(/0+$/, "").replace(/\.$/, ""); if (s === "") s = "0"; return (v < 0 ? M : "") + s; };
+const par = (v, fmt = f4) => v < 0 ? "(" + fmt(v) + ")" : fmt(v);
+
+/* ---------- réseau SVG ---------- */
+const NS = "http://www.w3.org/2000/svg";
+const X1 = 90, X2 = 340, X3 = 560, YB = 70, Y1 = 175, Y2 = 280, R = 25;
+const NODES = {
+  b1: [X1, YB, "+1", true], x1: [X1, Y1, "x₁"], x2: [X1, Y2, "x₂"],
+  b2: [X2, YB, "+1", true], h1: [X2, Y1, "a₁⁽²⁾"], h2: [X2, Y2, "a₂⁽²⁾"],
+  o: [X3, Y1, "a⁽³⁾"]
+};
+// [départ, arrivée, matrice, i, j, position de l'étiquette, nom]
+const EDGES = [
+  ["b1", "h1", 1, 0, 0, .35, "Θ₁₀⁽¹⁾"], ["b1", "h2", 1, 1, 0, .35, "Θ₂₀⁽¹⁾"],
+  ["x1", "h1", 1, 0, 1, .35, "Θ₁₁⁽¹⁾"], ["x1", "h2", 1, 1, 1, .35, "Θ₂₁⁽¹⁾"],
+  ["x2", "h1", 1, 0, 2, .35, "Θ₁₂⁽¹⁾"], ["x2", "h2", 1, 1, 2, .35, "Θ₂₂⁽¹⁾"],
+  ["b2", "o", 2, 0, 0, .62, "Θ₁₀⁽²⁾"], ["h1", "o", 2, 0, 1, .5, "Θ₁₁⁽²⁾"],
+  ["h2", "o", 2, 0, 2, .5, "Θ₁₂⁽²⁾"]
+];
+const svg = document.getElementById("net");
+const el = (tag, attrs, parent = svg) => {
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  parent.appendChild(e); return e;
+};
+
+function buildSvg() {
+  const defs = el("defs", {});
+  for (const [id, color] of [["ar", "var(--edge)"], ["arf", "var(--accent)"], ["arb", "var(--err)"], ["arg", "var(--grad)"], ["ard", "var(--dim)"]]) {
+    const m = el("marker", { id, viewBox: "0 0 10 10", refX: 9, refY: 5, markerWidth: 6, markerHeight: 6, orient: "auto-start-reverse" }, defs);
+    el("path", { d: "M0 0L10 5L0 10z", style: "fill:" + color }, m);
+  }
+  const gE = el("g", {}), gL = el("g", {}), gN = el("g", {}), gA = el("g", {});
+  EDGES.forEach((e, k) => {
+    e.line = el("line", { class: "edge" }, gE);
+    const [ax, ay] = NODES[e[0]], [bx, by] = NODES[e[1]];
+    e.label = el("text", { class: "elabel", x: ax + (bx - ax) * e[5], y: ay + (by - ay) * e[5] }, gL);
+  });
+  for (const k in NODES) {
+    const [x, y, t, bias] = NODES[k];
+    NODES[k].c = el("circle", { cx: x, cy: y, r: R, class: "node" + (bias ? " bias" : "") }, gN);
+    el("text", { x, y, class: "ntext" + (bias ? " bias" : "") }, gN).textContent = t;
+  }
+  el("text", { x: X1, y: 374, class: "cap" }).textContent = "Entrée";
+  el("text", { x: X2, y: 374, class: "cap" }).textContent = "Couche cachée";
+  el("text", { x: X3, y: 374, class: "cap" }).textContent = "Sortie";
+  svg.annGroup = gA;
+}
+
+function setEdge(e, cls, reversed) {
+  const [ax, ay] = NODES[e[0]], [bx, by] = NODES[e[1]];
+  let [sx, sy, tx, ty] = reversed ? [bx, by, ax, ay] : [ax, ay, bx, by];
+  const d = Math.hypot(tx - sx, ty - sy), ux = (tx - sx) / d, uy = (ty - sy) / d;
+  e.line.setAttribute("x1", sx + ux * R); e.line.setAttribute("y1", sy + uy * R);
+  e.line.setAttribute("x2", tx - ux * (R + 2)); e.line.setAttribute("y2", ty - uy * (R + 2));
+  e.line.setAttribute("class", "edge " + cls);
+  const mk = { "": "ar", dim: "ard", fwd: "arf", back: "arb", grad: "arg" }[cls];
+  e.line.setAttribute("marker-end", `url(#${mk})`);
+}
+
+function ann(x, y, text, cls = "", anchor = "middle") {
+  el("text", { x, y, class: "ann " + cls, "text-anchor": anchor }, svg.annGroup).textContent = text;
+}
+
+/* ordre de lecture des tableaux : ligne par ligne de chaque matrice */
+const EDGES_TAB = () => EDGES.slice().sort((a, b) => (a[2] - b[2]) || (a[3] - b[3]) || (a[4] - b[4]));
+
+/* ---------- les étapes ---------- */
+const W = (c, m, i, j) => (m === 1 ? c.T1 : c.T2)[i][j];
+
+const STEPS = [
+  { kicker: "Départ", title: "Les données et les poids",
+    edges: () => ["", false], nodes: {},
+    labels: (c, e) => [fw(W(P, e[2], e[3], e[4])), ""],
+    ann: c => {
+      ann(X1 - 38, Y1 + 5, fw(P.x[0]), "acc", "end"); ann(X1 - 38, Y2 + 5, fw(P.x[1]), "acc", "end");
+      ann(X3 + 36, Y1 + 5, "cible y = " + fw(P.y), "muted", "start");
+    },
+    lead: () => `Un seul exemple x = (${fw(P.x[0])}, ${fw(P.x[1])}) avec la cible y = ${fw(P.y)}. Les poids sont écrits sur les liens. Les unités de biais (+1, en pointillé) ajoutent une première colonne à chaque matrice.`,
+    formula: () => "Θ⁽¹⁾ : 2 × 3 (entrée → cachée)   ·   Θ⁽²⁾ : 1 × 3 (cachée → sortie)   ·   α = " + fw(P.alpha) + "   ·   λ = " + fw(P.lambda),
+    calc: c => `
+      <div class="mat">Θ⁽¹⁾ =<table class="br">${P.T1.map(r => "<tr>" + r.map(v => `<td>${fw(v)}</td>`).join("") + "</tr>").join("")}</table></div>
+      <div class="mat">Θ⁽²⁾ =<table class="br"><tr>${P.T2[0].map(v => `<td>${fw(v)}</td>`).join("")}</tr></table></div>
+      <p class="note">Colonne 1 = poids du biais. Ligne i = neurone d'arrivée i. Par exemple Θ₁₂⁽¹⁾ = ${fw(P.T1[0][2])} relie x₂ à a₁⁽²⁾.</p>
+      <p class="note">Activation : sigmoïde g(z) = 1 / (1 + e<sup>−z</sup>). Coût : entropie croisée.</p>`
+  },
+  { kicker: "Étape 1a · propagation avant", title: "Calcul de la couche cachée",
+    edges: e => [e[2] === 1 ? "fwd" : "dim", false], nodes: { h1: "active", h2: "active" },
+    labels: (c, e) => [fw(W(P, e[2], e[3], e[4])), e[2] === 1 ? "strong" : "dim"],
+    ann: c => {
+      ann(X1 - 38, Y1 + 5, fw(P.x[0]), "acc", "end"); ann(X1 - 38, Y2 + 5, fw(P.x[1]), "acc", "end");
+      ann(X2, Y1 - 44, `z = ${f4(c.z2[0])} → a = ${f4(c.h[0])}`, "acc");
+      ann(X2, Y2 + 50, `z = ${f4(c.z2[1])} → a = ${f4(c.h[1])}`, "acc");
+    },
+    lead: () => "Chaque neurone caché fait une somme pondérée de ses entrées (biais compris), puis applique la sigmoïde.",
+    formula: () => "z⁽²⁾ = Θ⁽¹⁾ a⁽¹⁾   ,   a⁽²⁾ = g(z⁽²⁾)   avec a⁽¹⁾ = (1, x₁, x₂)",
+    calc: c => [0, 1].map(i => `
+      <div class="row">z${i ? "₂" : "₁"}⁽²⁾ = ${par(P.T1[i][0], fw)}·1 + ${par(P.T1[i][1], fw)}·${fw(P.x[0])} + ${par(P.T1[i][2], fw)}·${fw(P.x[1])} = <b>${f4(c.z2[i])}</b></div>
+      <div class="row">a${i ? "₂" : "₁"}⁽²⁾ = g(${f4(c.z2[i])}) = 1 / (1 + e<sup>${f4(-c.z2[i])}</sup>) = <b>${f4(c.h[i])}</b></div>`).join("<br>")
+      + `<p class="note">On garde a⁽²⁾ = (1, ${f4(c.h[0])}, ${f4(c.h[1])}) en mémoire : la passe arrière en aura besoin.</p>`
+  },
+  { kicker: "Étape 1b · propagation avant", title: "Sortie et coût",
+    edges: e => [e[2] === 2 ? "fwd" : "dim", false], nodes: { o: "active" },
+    labels: (c, e) => [fw(W(P, e[2], e[3], e[4])), e[2] === 2 ? "strong" : "dim"],
+    ann: c => {
+      ann(X2, Y1 - 44, `a = ${f4(c.h[0])}`, "muted"); ann(X2, Y2 + 50, `a = ${f4(c.h[1])}`, "muted");
+      ann(X3 + 36, Y1 - 14, `z = ${f4(c.z3)}`, "", "start");
+      ann(X3 + 36, Y1 + 6, `a = ${f4(c.a3)}`, "acc", "start");
+      ann(X3 + 36, Y1 + 26, `J = ${f4(c.J)}`, "", "start");
+    },
+    lead: () => "Le neurone de sortie fait la même opération. Sa sortie a⁽³⁾ est la prédiction, que l'on compare à la cible avec l'entropie croisée.",
+    formula: () => "a⁽³⁾ = g(Θ⁽²⁾ a⁽²⁾)   ,   J = −[ y·ln(a⁽³⁾) + (1 − y)·ln(1 − a⁽³⁾) ]" + (P.lambda ? "  + (λ/2)·Σ Θ²" : ""),
+    calc: c => `
+      <div class="row">z⁽³⁾ = ${par(P.T2[0][0], fw)}·1 + ${par(P.T2[0][1], fw)}·${f4(c.h[0])} + ${par(P.T2[0][2], fw)}·${f4(c.h[1])} = <b>${f4(c.z3)}</b></div>
+      <div class="row">a⁽³⁾ = g(${f4(c.z3)}) = <b>${f4(c.a3)}</b></div><br>
+      <div class="row">J = −[ ${fw(P.y)}·ln(${f4(c.a3)}) + ${fw(1 - P.y)}·ln(${f4(1 - c.a3)}) ] = <b>${f4(c.Jd)}</b></div>
+      ${P.lambda ? `<div class="row">+ régularisation (λ/2)·ΣΘ² (sans biais) = ${f4(c.reg)}  →  J = <b>${f4(c.J)}</b></div>` : ""}
+      ${P.y === 1 ? `<p class="note">Comme y = 1, le second terme s'annule : J = −ln(a⁽³⁾). Plus a⁽³⁾ est proche de 1, plus le coût est petit.</p>` : ""}
+      ${P.y === 0 ? `<p class="note">Comme y = 0, le premier terme s'annule : J = −ln(1 − a⁽³⁾).</p>` : ""}`
+  },
+  { kicker: "Étape 2 · passe arrière", title: "Erreur de la couche de sortie",
+    edges: () => ["dim", false], nodes: { o: "err" },
+    labels: (c, e) => [fw(W(P, e[2], e[3], e[4])), "dim"],
+    ann: c => {
+      ann(X3 + 36, Y1 - 4, `a = ${f4(c.a3)}   y = ${fw(P.y)}`, "muted", "start");
+      ann(X3 + 36, Y1 + 18, `δ⁽³⁾ = ${f4(c.d3)}`, "errc", "start");
+    },
+    lead: () => "L'erreur de sortie est simplement la prédiction moins la cible (c'est ce que donne la dérivée de l'entropie croisée avec une sortie sigmoïde).",
+    formula: () => "δ⁽³⁾ = a⁽³⁾ − y",
+    calc: c => `
+      <div class="row">δ⁽³⁾ = ${f4(c.a3)} − ${fw(P.y)} = <span class="e">${f4(c.d3)}</span></div>
+      <p class="note">${c.d3 < 0 ? "δ est négatif : la prédiction est trop basse, la sortie doit augmenter." : "δ est positif : la prédiction est trop haute, la sortie doit diminuer."} Plus |δ| est grand, plus la correction sera forte.</p>`
+  },
+  { kicker: "Étape 3 · passe arrière", title: "Erreurs de la couche cachée",
+    edges: e => (e[2] === 2 && e[4] > 0) ? ["back", true] : ["dim", false], nodes: { h1: "err", h2: "err", o: "err" },
+    labels: (c, e) => (e[2] === 2 && e[4] > 0) ? ["× " + par(W(P, 2, 0, e[4]), fw), "strong"] : [fw(W(P, e[2], e[3], e[4])), "dim"],
+    ann: c => {
+      ann(X3 + 36, Y1 + 5, `δ⁽³⁾ = ${f4(c.d3)}`, "errc", "start");
+      ann(X2, Y1 - 52, `${par(P.T2[0][1], fw)} × ${par(c.d3)} × ${f4(c.gp[0])}`, "muted");
+      ann(X2, Y1 - 34, `δ₁⁽²⁾ = ${f4(c.d2[0])}`, "errc");
+      ann(X2, Y2 + 46, `${par(P.T2[0][2], fw)} × ${par(c.d3)} × ${f4(c.gp[1])}`, "muted");
+      ann(X2, Y2 + 64, `δ₂⁽²⁾ = ${f4(c.d2[1])}`, "errc");
+    },
+    lead: () => "L'erreur remonte le long des poids qui relient chaque neurone caché à la sortie, puis on la multiplie par la pente de la sigmoïde. Pas d'erreur pour le biais ni pour les entrées.",
+    formula: () => "δ⁽²⁾ = (Θ⁽²⁾)ᵀ δ⁽³⁾ ⊙ g′(z⁽²⁾)   ,   g′(z) = a (1 − a)",
+    calc: c => `
+      <div class="row">(Θ⁽²⁾)ᵀ δ⁽³⁾ = (${P.T2[0].map(v => fw(v)).join(", ")}) × ${par(c.d3)} = (${f4(P.T2[0][0] * c.d3)}, ${f4(c.back[0])}, ${f4(c.back[1])})</div>
+      <div class="row">on retire la composante du biais → (${f4(c.back[0])}, ${f4(c.back[1])})</div><br>
+      <div class="row">g′ : ${f4(c.h[0])} × ${f4(1 - c.h[0])} = ${f4(c.gp[0])}   et   ${f4(c.h[1])} × ${f4(1 - c.h[1])} = ${f4(c.gp[1])}</div><br>
+      <div class="row">δ₁⁽²⁾ = ${par(c.back[0])} × ${f4(c.gp[0])} = <span class="e">${f4(c.d2[0])}</span></div>
+      <div class="row">δ₂⁽²⁾ = ${par(c.back[1])} × ${f4(c.gp[1])} = <span class="e">${f4(c.d2[1])}</span></div>
+      <p class="note">Un neurone relié à la sortie par un poids positif reçoit une erreur du même signe que δ⁽³⁾ ; par un poids négatif, une erreur de signe opposé.</p>`
+  },
+  { kicker: "Étapes 4 et 5", title: "Gradient de chaque poids",
+    edges: () => ["grad", false], nodes: {},
+    labels: (c, e) => [f4((e[2] === 1 ? c.D1 : c.D2)[e[3]][e[4]]), "gradc"],
+    ann: c => {
+      ann(X1 - 38, Y1 + 5, `a = ${fw(P.x[0])}`, "muted", "end"); ann(X1 - 38, Y2 + 5, `a = ${fw(P.x[1])}`, "muted", "end");
+      ann(X2, Y1 - 44, `a = ${f4(c.h[0])} · δ = ${f4(c.d2[0])}`, "muted");
+      ann(X2, Y2 + 50, `a = ${f4(c.h[1])} · δ = ${f4(c.d2[1])}`, "muted");
+      ann(X3 + 36, Y1 + 5, `δ = ${f4(c.d3)}`, "muted", "start");
+    },
+    lead: () => `Gradient d'un poids = activation du neurone de départ × erreur du neurone d'arrivée. Ici m = 1, donc la moyenne ne change rien${P.lambda ? " ; on ajoute la pénalité λ·Θ sauf pour les biais." : " ; et λ = 0, donc pas de pénalité."}`,
+    formula: () => P.lambda ? "Dᵢⱼ = aⱼ δᵢ + λ Θᵢⱼ   (j ≠ 0)   ,   Dᵢ₀ = δᵢ   (biais)" : "Dᵢⱼ = Δᵢⱼ / m = aⱼ⁽ˡ⁾ δᵢ⁽ˡ⁺¹⁾",
+    calc: c => {
+      const rows = EDGES_TAB().map(e => {
+        const m = e[2], i = e[3], j = e[4];
+        const a = m === 1 ? c.a1[j] : c.a2[j], d = m === 1 ? c.d2[i] : c.d3;
+        const Dl = (m === 1 ? c.Dl1 : c.Dl2)[i][j], Rg = (m === 1 ? c.R1 : c.R2)[i][j], D = (m === 1 ? c.D1 : c.D2)[i][j];
+        return `<tr><td>${e[6]}</td><td>${f4(a)}</td><td>${f4(d)}</td><td>${f4(Dl)}</td>${P.lambda ? `<td>${j ? f4(Rg) : "biais"}</td>` : ""}<td class="g">${f4(D)}</td></tr>`;
+      }).join("");
+      return `<table><tr><th>Poids</th><th>a départ</th><th>δ arrivée</th><th>a × δ</th>${P.lambda ? "<th>+ λΘ</th>" : ""}<th>D</th></tr>${rows}</table>
+        <p class="note">Forme matricielle : D⁽²⁾ = δ⁽³⁾ (a⁽²⁾)ᵀ et D⁽¹⁾ = δ⁽²⁾ (a⁽¹⁾)ᵀ ; chaque D a la taille de son Θ.</p>`;
+    }
+  },
+  { kicker: "Descente de gradient", title: "Mise à jour des poids",
+    edges: () => ["", false], nodes: { o: "active" },
+    labels: (c, e) => [`${fw(W(P, e[2], e[3], e[4]))} → ${f4((e[2] === 1 ? c.N1 : c.N2)[e[3]][e[4]])}`, ""],
+    ann: c => {
+      ann(X3 + 36, Y1 - 14, `a : ${f4(c.a3)} → ${f4(c.fn.a3)}`, "acc", "start");
+      ann(X3 + 36, Y1 + 6, `J : ${f4(c.J)} → ${f4(c.fn.J)}`, "", "start");
+      ann(X3 + 36, Y1 + 26, `cible y = ${fw(P.y)}`, "muted", "start");
+    },
+    lead: c => `Chaque poids recule d'un pas α = ${fw(P.alpha)} dans la direction opposée à son gradient. Une nouvelle propagation avant montre que le coût ${c.fn.J < c.J ? "a baissé" : "n'a pas baissé (essayez un α plus petit)"}.`,
+    formula: () => "Θ := Θ − α D",
+    calc: c => {
+      const rows = EDGES_TAB().map(e => {
+        const m = e[2], i = e[3], j = e[4];
+        const T = (m === 1 ? P.T1 : P.T2)[i][j], D = (m === 1 ? c.D1 : c.D2)[i][j], N = (m === 1 ? c.N1 : c.N2)[i][j];
+        return `<tr><td>${e[6]}</td><td>${fw(T)}</td><td>${f4(D)}</td><td><b>${f4(N)}</b></td></tr>`;
+      }).join("");
+      return `<table><tr><th>Poids</th><th>Θ</th><th>D</th><th>Θ − ${fw(P.alpha)}·D</th></tr>${rows}</table>
+        <div class="row" style="margin-top:8px">Nouvelle prédiction : a⁽³⁾ = ${f4(c.a3)} → <b>${f4(c.fn.a3)}</b></div>
+        <div class="row">Nouveau coût : J = ${f4(c.J)} → <b>${f4(c.fn.J)}</b></div>
+        <p class="note">Cliquez sur « Nouvelle itération » pour garder ces poids et recommencer la boucle.</p>`;
+    }
+  }
+];
+
+/* ---------- rendu ---------- */
+const $ = id => document.getElementById(id);
+
+function render() {
+  const c = compute(P), S = STEPS[step];
+  EDGES.forEach(e => {
+    const [cls, rev] = S.edges(e); setEdge(e, cls, rev);
+    const [txt, lc] = S.labels(c, e);
+    e.label.textContent = txt; e.label.setAttribute("class", "elabel " + (lc || ""));
+  });
+  for (const k in NODES) NODES[k].c.setAttribute("class", "node" + (NODES[k][3] ? " bias" : "") + (S.nodes[k] ? " " + S.nodes[k] : ""));
+  svg.annGroup.replaceChildren(); S.ann(c);
+
+  $("kicker").textContent = `${S.kicker} · itération ${iteration}`;
+  $("title").textContent = S.title;
+  $("lead").textContent = typeof S.lead === "function" ? S.lead(c) : S.lead;
+  $("formula").textContent = S.formula();
+  $("calc").innerHTML = S.calc(c);
+
+  $("prev").disabled = step === 0;
+  const last = step === STEPS.length - 1;
+  $("next").textContent = last ? "Nouvelle itération ↻" : "Suivant →";
+  document.querySelectorAll(".dot").forEach((d, k) => d.classList.toggle("on", k === step));
+  renderHistory(c);
+}
+
+function renderHistory(c) {
+  const pts = history.concat([c.J]);
+  const box = $("hist");
+  if (pts.length < 2) { box.innerHTML = `<span class="txt" style="color:var(--muted)">Le coût J de chaque itération s'affichera ici.</span>`; return; }
+  const w = 240, h = 70, pad = 8, max = Math.max(...pts), min = Math.min(...pts, 0);
+  const X = k => pad + k * (w - 2 * pad) / (pts.length - 1), Y = v => h - pad - (v - min) / ((max - min) || 1) * (h - 2 * pad);
+  const d = pts.map((v, k) => (k ? "L" : "M") + X(k).toFixed(1) + " " + Y(v).toFixed(1)).join("");
+  box.innerHTML = `<svg viewBox="0 0 ${w} ${h}" role="img" aria-label="Évolution du coût"><path class="spark" d="${d}"/>${pts.map((v, k) => `<circle class="sparkdot" r="2.5" cx="${X(k)}" cy="${Y(v)}"/>`).join("")}</svg>
+    <span class="txt">Coût J : ${f4(pts[0])} → <b>${f4(pts[pts.length - 1])}</b><br><span style="color:var(--muted)">${pts.length} itérations</span></span>`;
+}
+
+function go(k) { step = Math.max(0, Math.min(STEPS.length - 1, k)); render(); }
+function next() {
+  if (step < STEPS.length - 1) return go(step + 1);
+  const c = compute(P);                       // nouvelle itération
+  history.push(c.J);
+  P.T1 = c.N1.map(r => r.map(v => +v.toFixed(6)));
+  P.T2 = c.N2.map(r => r.map(v => +v.toFixed(6)));
+  iteration++; syncInputs(); go(1);
+}
+
+/* ---------- paramètres ---------- */
+const FIELDS = [
+  ["x₁", "x", 0], ["x₂", "x", 1], ["y (cible)", "y"],
+  ["Θ₁₀⁽¹⁾ biais→a₁", "T1", 0, 0], ["Θ₁₁⁽¹⁾ x₁→a₁", "T1", 0, 1], ["Θ₁₂⁽¹⁾ x₂→a₁", "T1", 0, 2],
+  ["Θ₂₀⁽¹⁾ biais→a₂", "T1", 1, 0], ["Θ₂₁⁽¹⁾ x₁→a₂", "T1", 1, 1], ["Θ₂₂⁽¹⁾ x₂→a₂", "T1", 1, 2],
+  ["Θ₁₀⁽²⁾ biais→sortie", "T2", 0, 0], ["Θ₁₁⁽²⁾ a₁→sortie", "T2", 0, 1], ["Θ₁₂⁽²⁾ a₂→sortie", "T2", 0, 2],
+  ["α (taux)", "alpha"], ["λ (régularisation)", "lambda"]
+];
+const getF = f => f.length === 2 ? P[f[1]] : f.length === 3 ? P[f[1]][f[2]] : P[f[1]][f[2]][f[3]];
+const setF = (f, v) => { if (f.length === 2) P[f[1]] = v; else if (f.length === 3) P[f[1]][f[2]] = v; else P[f[1]][f[2]][f[3]] = v; };
+
+function buildInputs() {
+  const box = $("params");
+  FIELDS.forEach(f => {
+    const lab = document.createElement("label"); lab.textContent = f[0];
+    const inp = document.createElement("input");
+    inp.type = "number"; inp.step = "0.1";
+    if (f[1] === "y") { inp.min = 0; inp.max = 1; }
+    if (f[1] === "alpha" || f[1] === "lambda") inp.min = 0;
+    inp.addEventListener("change", () => {
+      let v = parseFloat(inp.value);
+      if (!isFinite(v)) v = getF(f);
+      if (f[1] === "y") v = Math.min(1, Math.max(0, v));
+      if (f[1] === "alpha" || f[1] === "lambda") v = Math.max(0, v);
+      setF(f, v); inp.value = v; history = []; iteration = 1; render();
+    });
+    f.inp = inp; lab.appendChild(inp); box.appendChild(lab);
+  });
+  syncInputs();
+}
+function syncInputs() { FIELDS.forEach(f => f.inp.value = +(+getF(f)).toFixed(4)); }
+
+/* ---------- démarrage ---------- */
+buildSvg();
+STEPS.forEach((s, k) => {
+  const b = document.createElement("button");
+  b.className = "dot"; b.textContent = k; b.title = s.title; b.setAttribute("aria-label", "Aller à : " + s.title);
+  b.onclick = () => go(k); $("dots").appendChild(b);
+});
+buildInputs();
+$("prev").onclick = () => go(step - 1);
+$("next").onclick = next;
+$("reset").onclick = () => { P = clone(DEFAUT); history = []; iteration = 1; syncInputs(); go(0); };
+$("play").onclick = () => {
+  if (timer) { clearInterval(timer); timer = null; $("play").textContent = "▶ Lecture"; return; }
+  $("play").textContent = "❚❚ Pause";
+  timer = setInterval(next, 3500);
+};
+document.addEventListener("keydown", ev => {
+  if (ev.target.tagName === "INPUT") return;
+  if (ev.key === "ArrowRight") next();
+  if (ev.key === "ArrowLeft") go(step - 1);
+});
+render();
+</script>
+
+<footer>
+© 2026 Moulay Akhloufi.
+</footer>
+</body>
+</html>
