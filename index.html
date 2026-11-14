@@ -99,13 +99,17 @@ summary{cursor:pointer;font-weight:600}
 .spark{fill:none;stroke:var(--accent);stroke-width:2}
 .sparkdot{fill:var(--accent)}
 footer{max-width:1200px;margin:0 auto;padding:0 20px 30px;color:var(--muted);font-size:.85rem}
+.eyebrow{font:500 12px/1.2 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.06em;text-transform:uppercase;color:var(--accent);display:flex;gap:12px;flex-wrap:wrap;align-items:center;margin:0 0 10px}
+.eyebrow a{color:var(--muted);text-decoration:none}.eyebrow a:hover{color:var(--accent)}
+footer.site{display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;border-top:1px solid var(--line);padding-top:16px}
+footer.site a{color:var(--accent);text-decoration:none}footer.site a:hover{text-decoration:underline}
 kbd{border:1px solid var(--line);border-radius:4px;padding:0 5px;font-size:.8rem}
 </style>
 </head>
 <body>
 
 <header>
-  <p style="margin:0 0 6px;font-size:14px"><a href="https://primeai.github.io/Apprentissage-Profond/">← Apprentissage profond – Animations</a></p>
+  <div class="eyebrow"><span>Deep Learning · Animations interactives</span><a href="https://primeai.github.io/Apprentissage-Profond/">← Apprentissage profond – Animations</a></div>
   <h1>Rétropropagation du gradient, pas à pas</h1>
   <h3>Moulay Akhloufi</h3>
   <p>Un réseau 2-2-1 à activation sigmoïde : suivez chaque calcul, de la propagation avant à la mise à jour des poids.</p>
@@ -498,6 +502,6 @@ render();
 </script>
 
 
-<footer><span>© 2026 Moulay Akhloufi</span><a href="https://primeai.github.io/Apprentissage-Profond/"> Apprentissage profond – Animations →</a></footer>
+<footer class="site"><span>© 2026 Moulay Akhloufi</span><a href="https://primeai.github.io/Apprentissage-Profond/">Apprentissage profond – Animations →</a></footer>
 </body>
 </html>
